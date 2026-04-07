@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/mohammadT77/rotate_writer"
+	"github.com/amin-tehrani/rotate_writer"
 	"github.com/stretchr/testify/require"
 )
 
@@ -170,5 +170,38 @@ func TestRotateFileWriterParallel(t *testing.T) {
 	wg.Wait()
 
 	rfw.Close()
-	t.Error()
+}
+
+func TestNewRotateFileWriterNilArgs(t *testing.T) {
+	_, err := rotate_writer.NewRotateFileWriter("testdata/dummy.txt", nil)
+	require.Error(t, err)
+	require.Equal(t, "fileRotatorFn cannot be nil", err.Error())
+}
+
+func TestRotateFileWriterReset(t *testing.T) {
+	os.RemoveAll("testdata")
+	rotator := func(status rotate_writer.RotateStatus) (rotate bool, fileName string) {
+		return false, ""
+	}
+
+	rfw, err := rotate_writer.NewRotateFileWriter("testdata/TestReset_0.txt", rotator)
+	require.Nil(t, err)
+
+	_, err = rfw.Write([]byte("foo"))
+	require.Nil(t, err)
+
+	err = rfw.Reset("testdata/TestReset_1.txt")
+	require.Nil(t, err)
+
+	_, err = rfw.Write([]byte("bar"))
+	require.Nil(t, err)
+
+	rfw.Close()
+
+	// Check content
+	b, _ := os.ReadFile("testdata/TestReset_0.txt")
+	require.Equal(t, "foo", string(b))
+
+	b, _ = os.ReadFile("testdata/TestReset_1.txt")
+	require.Equal(t, "bar", string(b))
 }
