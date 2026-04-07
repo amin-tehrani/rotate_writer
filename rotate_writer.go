@@ -74,7 +74,6 @@ func (rw *RotateWriter) rotate(newWriter io.WriteCloser, newTime time.Time) erro
 	if rw.curWriter != nil {
 		err := rw.curWriter.Close()
 		if err != nil {
-			rw.mu.Unlock()
 			return err
 		}
 	}

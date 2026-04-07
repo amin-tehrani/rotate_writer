@@ -9,7 +9,7 @@ Generic GoLang Rotate Writer (io.Writer and io.WriterCloser)
 To use `rotate_writer`, install it using:
 
 ```shell
-go get -u github.com/mohammadT77/rotate_writer
+go get -u github.com/amin-tehrani/rotate_writer
 ```
 
 
