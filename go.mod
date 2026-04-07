@@ -1,4 +1,4 @@
-module github.com/mohammadT77/rotate_writer
+module github.com/amin-tehrani/rotate_writer
 
 go 1.19
 
