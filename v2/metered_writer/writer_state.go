@@ -1,12 +1,17 @@
 package metered_writer
 
 import (
+	"fmt"
 	"time"
 )
 
 type WriterState struct {
-	Created  time.Time
-	Modified time.Time
-	Closed   *time.Time
-	Size     int64
+	CreatedAt  time.Time
+	ModifiedAt time.Time
+	ClosedAt   *time.Time
+	Size       int64
+}
+
+func (ws WriterState) String() string {
+	return fmt.Sprintf("%#v", ws)
 }

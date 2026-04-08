@@ -1,6 +1,7 @@
-package v2
+package rotate_writer
 
 import (
+	"bytes"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -8,7 +9,6 @@ import (
 	"github.com/amin-tehrani/rotate_writer/v2/metered_writer"
 	"github.com/amin-tehrani/rotate_writer/v2/rule"
 )
-
 
 // RotateWriter manages the writing and rotation of an io.WriteCloser based on specific conditions.
 type RotateWriter struct {
@@ -26,6 +26,9 @@ func (rw *RotateWriter) Rotate() error {
 	rw.mu.Lock()
 	defer rw.mu.Unlock()
 
+	if rw.MeteredWriterCloser == nil {
+		rw.MeteredWriterCloser = metered_writer.NewMeteredWriter(nil)
+	}
 	if err := rw.MeteredWriterCloser.Close(); err != nil {
 		return err
 	}
@@ -43,7 +46,6 @@ func (rw *RotateWriter) Rotate() error {
 
 func (rw *RotateWriter) Write(p []byte) (n int, err error) {
 	rw.mu.Lock()
-	defer rw.mu.Unlock()
 
 	dataSize := len(p)
 	currSize := rw.State().Size
@@ -59,29 +61,39 @@ func (rw *RotateWriter) Write(p []byte) (n int, err error) {
 		p2 := p[cap:]
 		n, err = rw.MeteredWriterCloser.Write(p1)
 		if err != nil {
+			rw.mu.Unlock()
 			return
 		}
 		rw.mu.Unlock()
-		if err := rw.Rotate(); err != nil {
-			return 0, err
+		if err = rw.Rotate(); err != nil {
+			return n, err
 		}
-		return rw.Write(p2) // Recursive
+		n2, err2 := rw.Write(p2) // Recursive
+		return n + n2, err2
 	}
 
 	if rw.rule.Check(rw.State()) {
 		rw.mu.Unlock()
-		if err := rw.Rotate(); err != nil {
+		if err = rw.Rotate(); err != nil {
 			return 0, err
 		}
 		return rw.Write(p) // Recursive
 	}
 
+	n, err = rw.MeteredWriterCloser.Write(p)
+	rw.mu.Unlock()
 	return
 }
 
-func NewRotateWriter(rule rule.RotateRule) (*RotateWriter, error) {
+func NewRotateWriter(rule rule.RotateRule, err error) (*RotateWriter, error) {
+	if err != nil {
+		return nil, err
+	}
+	b := new([]byte)
+	wc := metered_writer.NopWriterCloser(bytes.NewBuffer(*b))
 	rw := RotateWriter{
-		rule: rule,
+		MeteredWriterCloser: metered_writer.NewMeteredWriter(wc),
+		rule:                rule,
 	}
 	return &rw, rw.Rotate()
 }

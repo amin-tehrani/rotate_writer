@@ -15,6 +15,7 @@ func (mfw *meteredFileWriter) File() *os.File {
 
 func NewMeteredFileWriter(f *os.File) *meteredFileWriter {
 	return &meteredFileWriter{
-		f: f,
+		baseMeteredWriter: *NewMeteredWriter(f),
+		f:                 f,
 	}
 }

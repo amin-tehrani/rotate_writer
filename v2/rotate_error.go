@@ -1,4 +1,4 @@
-package v2
+package rotate_writer
 
 type RotateError struct {
 	err error
