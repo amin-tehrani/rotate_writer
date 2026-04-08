@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/amin-tehrani/rotate_writer"
+	"github.com/amin-tehrani/rotate_writer/v1"
 	"github.com/stretchr/testify/require"
 )
 

@@ -6,7 +6,7 @@ import (
 	"sync"
 	"testing"
 
-	"github.com/amin-tehrani/rotate_writer"
+	"github.com/amin-tehrani/rotate_writer/v1"
 	"github.com/stretchr/testify/require"
 )
 
@@ -61,11 +61,14 @@ func TestRotateWriterDummyBufferParallel(t *testing.T) {
 	writers := []*rotate_writer.DummyWriteCloser{
 		newDummyBuffer(),
 	}
+	var mu sync.Mutex
 
 	rotatorFn := func(s rotate_writer.RotateStatus) io.WriteCloser {
 		if s.CurrentSize > 0 {
 			newWriter := newDummyBuffer()
+			mu.Lock()
 			writers = append(writers, newWriter)
+			mu.Unlock()
 			return newWriter
 		} else {
 			return nil
@@ -77,19 +80,11 @@ func TestRotateWriterDummyBufferParallel(t *testing.T) {
 
 	rw := rotate_writer.NewRotateWriter(writers[0], rotatorFn)
 
-	printAll := func() {
-		for _, w := range writers {
-			t.Log(string(w.Writer().(*bytes.Buffer).Bytes()))
-		}
-	}
-
 	go func() {
 		defer wg.Done()
 		n, err := rw.Write([]byte("1234"))
 		require.Nil(t, err)
 		require.Equal(t, 4, n)
-		t.Log("first write done")
-		printAll()
 	}()
 
 	go func() {
@@ -97,8 +92,6 @@ func TestRotateWriterDummyBufferParallel(t *testing.T) {
 		n, err := rw.Write([]byte("56789"))
 		require.Nil(t, err)
 		require.Equal(t, 5, n)
-		t.Log("second write done")
-		printAll()
 	}()
 
 	go func() {
@@ -106,8 +99,6 @@ func TestRotateWriterDummyBufferParallel(t *testing.T) {
 		n, err := rw.Write([]byte("abc"))
 		require.Nil(t, err)
 		require.Equal(t, 3, n)
-		t.Log("third write done")
-		printAll()
 	}()
 
 	wg.Wait()
