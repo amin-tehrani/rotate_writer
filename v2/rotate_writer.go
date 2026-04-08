@@ -2,6 +2,7 @@ package rotate_writer
 
 import (
 	"bytes"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +21,17 @@ type RotateWriter struct {
 	counter atomic.Int32
 
 	mu sync.Mutex
+}
+
+type fileRotator interface {
+	File() *os.File
+}
+
+func (rw *RotateWriter) File() *os.File {
+	if mfw, ok := rw.MeteredWriterCloser.(fileRotator); ok {
+		return mfw.File()
+	}
+	return nil
 }
 
 func (rw *RotateWriter) Rotate() error {
