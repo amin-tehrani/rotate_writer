@@ -46,7 +46,7 @@ func (rw *RotateWriter) Rotate() error {
 	}
 	rw.last = rw.MeteredWriterCloser
 
-	if newWriter, err := rw.rule.NewWriter(int(rw.counter.Load()), time.Now(), rw.State()); err != nil {
+	if newWriter, err := rw.rule.NewWriter(int(rw.counter.Load()+1), time.Now(), rw.State()); err != nil {
 		return err
 	} else {
 		rw.MeteredWriterCloser = newWriter
