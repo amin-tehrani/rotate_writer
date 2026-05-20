@@ -77,6 +77,16 @@ r, err := rule.NewFileRotateRule(
 )
 ```
 
+### Template variables
+
+When using `NewTemplateFileRotateRule`, the following variables are available:
+
+| Variable | Type | Description |
+|---|---|---|
+| `.Count` | `int` | Rotation count (starts at 1) |
+| `.CreateTime` | `time.Time` | Time the new writer is being created |
+| `.PrevState` | `WriterState` | State of the writer being rotated away |
+
 ### Available options
 
 | Option | Description |

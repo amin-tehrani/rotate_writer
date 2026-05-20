@@ -284,6 +284,53 @@ func TestRotateWriter_ConcurrentWrites_NoDataRace(t *testing.T) {
 	wg.Wait()
 }
 
+// ---- Bug 1: infinite recursion / excessive rotation with stateless lambda ----
+
+// BUG 1: When rule.Check() returns true, Write() rotates and then RECURSIVELY calls
+// Write(p) again. If the lambda does not depend on writer state (e.g. a global counter,
+// or always-true), this causes infinite recursion → stack overflow.
+//
+// The lambda here is capped at 50 true-returns to prevent a real stack overflow in the
+// test binary. After the cap it returns false so the recursion eventually stops.
+// A correct implementation should rotate ONCE and then write — not re-check after rotation.
+// Fix: after rotation triggered by Check(), write directly instead of recursing.
+func TestBug_StatelessLambda_ShouldNotCauseExcessiveRotations(t *testing.T) {
+	dir := t.TempDir()
+	rotations := 0
+	callCount := 0
+
+	r := newFileRule(t, dir,
+		rule.WithLambda(func(_ metered_writer.WriterState) bool {
+			callCount++
+			return callCount <= 50 // cap to prevent real stack overflow
+		}),
+		rule.WithRotateListener(func(_ int, _ time.Time, _ metered_writer.WriterState) {
+			rotations++
+		}),
+	)
+	rw := newWriter(t, r)
+	defer rw.Close()
+
+	// Write a single payload. Correct behaviour: rotate once, write to the new file.
+	// Buggy behaviour: rotate up to 50 times before the cap kicks in.
+	rw.Write([]byte("hello"))
+
+	if rotations > 1 {
+		t.Fatalf("BUG: a single Write triggered %d rotations (expected 1); "+
+			"stateless lambda causes recursive re-check after each rotation", rotations)
+	}
+
+	// Data should land in the file opened after the first (and only) rotation.
+	expectedFile := filepath.Join(dir, "log-2.log")
+	if _, err := os.Stat(expectedFile); os.IsNotExist(err) {
+		t.Fatalf("expected data file %q does not exist", expectedFile)
+	}
+	got := readFile(t, expectedFile)
+	if string(got) != "hello" {
+		t.Fatalf("expected 'hello' in log-2.log, got %q", got)
+	}
+}
+
 // ---- RotateError ----
 
 func TestRotateError_Error(t *testing.T) {

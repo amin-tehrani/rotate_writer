@@ -241,14 +241,9 @@ func TestFileRotateRule_NewWriter_WithFileMode(t *testing.T) {
 
 // ---- NewTemplateFileRotateRule ----
 
-// NOTE: file_generator.go uses html/template instead of text/template, and template
-// data keys are lowercase ("count", "createTime", "prevState"). The README documents
-// uppercase keys (.Count, .CreateTime) which do NOT work with the current implementation.
-// Templates must use lowercase keys: .count, .createTime, .prevState.
 func TestNewTemplateFileRotateRule_ValidTemplate(t *testing.T) {
 	dir := t.TempDir()
-	// Using lowercase key .count to match the actual map key in file_generator.go
-	tmpl := filepath.Join(dir, "app-{{printf \"%03d\" .count}}.log")
+	tmpl := filepath.Join(dir, `app-{{printf "%03d" .Count}}.log`)
 	r, err := rule.NewTemplateFileRotateRule(tmpl)
 	if err != nil {
 		t.Fatalf("unexpected error for valid template: %v", err)
@@ -265,6 +260,45 @@ func TestNewTemplateFileRotateRule_ValidTemplate(t *testing.T) {
 	expectedPath := filepath.Join(dir, "app-001.log")
 	if _, statErr := os.Stat(expectedPath); os.IsNotExist(statErr) {
 		t.Fatalf("expected file %q to be created from template", expectedPath)
+	}
+}
+
+func TestNewTemplateFileRotateRule_CountKey(t *testing.T) {
+	dir := t.TempDir()
+	tmplStr := filepath.Join(dir, `app-{{printf "%03d" .Count}}.log`)
+	r, err := rule.NewTemplateFileRotateRule(tmplStr)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	w, err := r.NewWriter(1, time.Now(), metered_writer.WriterState{})
+	if err != nil {
+		t.Fatalf("unexpected error from NewWriter: %v", err)
+	}
+	defer w.Close()
+
+	expectedPath := filepath.Join(dir, "app-001.log")
+	if _, statErr := os.Stat(expectedPath); os.IsNotExist(statErr) {
+		t.Fatalf("expected file %q to be created using .Count", expectedPath)
+	}
+}
+
+func TestNewTemplateFileRotateRule_CreateTimeKey(t *testing.T) {
+	dir := t.TempDir()
+	tmplStr := filepath.Join(dir, `app-{{.CreateTime.Format "2006-01-02"}}.log`)
+	r, err := rule.NewTemplateFileRotateRule(tmplStr)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	today := time.Now().Format("2006-01-02")
+	w, err := r.NewWriter(1, time.Now(), metered_writer.WriterState{})
+	if err != nil {
+		t.Fatalf("unexpected error from NewWriter: %v", err)
+	}
+	defer w.Close()
+
+	expectedPath := filepath.Join(dir, "app-"+today+".log")
+	if _, statErr := os.Stat(expectedPath); os.IsNotExist(statErr) {
+		t.Fatalf("expected file %q to be created using .CreateTime", expectedPath)
 	}
 }
 
