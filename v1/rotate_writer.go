@@ -7,8 +7,13 @@ import (
 	"time"
 )
 
+// Deprecated: This package is deprecated and no longer maintained.
+// Use github.com/amin-tehrani/rotate_writer/v2 instead.
+
 // RotateStatus holds the rotation-related metadata including the index of the item,
 // the current size, the added size, and the start/end times of the current writing period.
+//
+// Deprecated: Use github.com/amin-tehrani/rotate_writer/v2 instead.
 type RotateStatus struct {
 	ItemIdx     int32
 	CurrentSize int32
@@ -20,9 +25,13 @@ type RotateStatus struct {
 // RotatorFn defines a function type that takes a RotateStatus and returns an io.WriteCloser.
 // This function determines when and how to rotate the writer.
 // if the function returns nil, the writer will not be rotated.
+//
+// Deprecated: Use github.com/amin-tehrani/rotate_writer/v2 instead.
 type RotatorFn = func(RotateStatus) io.WriteCloser
 
 // RotateWriter manages the writing and rotation of an io.WriteCloser based on specific conditions.
+//
+// Deprecated: Use github.com/amin-tehrani/rotate_writer/v2 instead.
 type RotateWriter struct {
 	curWriter io.WriteCloser
 
@@ -147,6 +156,8 @@ func (rw *RotateWriter) Close() error {
 
 // NewRotateWriter creates a new RotateWriter.
 // If the initialWriter or rotateCondition is nil, returns nil.
+//
+// Deprecated: Use github.com/amin-tehrani/rotate_writer/v2 instead.
 func NewRotateWriter(initialWriter io.WriteCloser, rotateCondition RotatorFn) *RotateWriter {
 	if rotateCondition == nil || initialWriter == nil {
 		return nil

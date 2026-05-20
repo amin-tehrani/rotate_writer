@@ -9,8 +9,14 @@ import (
 	"time"
 )
 
+// FileRotatorFn defines the rotation decision function for file-based rotation.
+//
+// Deprecated: Use github.com/amin-tehrani/rotate_writer/v2 instead.
 type FileRotatorFn = func(RotateStatus) (rotate bool, fileName string)
 
+// RotateFileWriter is a file-based rotate writer.
+//
+// Deprecated: Use github.com/amin-tehrani/rotate_writer/v2 instead.
 type RotateFileWriter struct {
 	*RotateWriter
 
@@ -50,6 +56,9 @@ func (rfw *RotateFileWriter) Rotate(fileName string, newTime time.Time) error {
 	return rfw.RotateWriter.Rotate(file, newTime)
 }
 
+// NewRotateFileWriter creates a new file-based RotateFileWriter.
+//
+// Deprecated: Use github.com/amin-tehrani/rotate_writer/v2 instead.
 func NewRotateFileWriter(initFilePath string, fileRotatorFn FileRotatorFn) (*RotateFileWriter, error) {
 	if fileRotatorFn == nil {
 		return nil, errors.New("fileRotatorFn cannot be nil")
