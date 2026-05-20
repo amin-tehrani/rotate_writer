@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -282,6 +283,160 @@ func TestRotateWriter_ConcurrentWrites_NoDataRace(t *testing.T) {
 		}(i)
 	}
 	wg.Wait()
+}
+
+// TestRotateWriter_ConcurrentWrites_DataIntegrity verifies that under concurrent
+// load with rotation, no bytes are silently dropped: the total bytes across all
+// rotated files equals the total bytes reported as written by Write().
+func TestRotateWriter_ConcurrentWrites_DataIntegrity(t *testing.T) {
+	dir := t.TempDir()
+	const maxSize = 64
+	rw := newWriter(t, newFileRule(t, dir, rule.WithMaxSize(maxSize)))
+
+	const goroutines = 20
+	const writesEach = 50
+	payload := []byte("hello!!\n") // 8 bytes
+
+	var totalWritten atomic.Int64
+	var wg sync.WaitGroup
+	for i := 0; i < goroutines; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < writesEach; j++ {
+				n, err := rw.Write(payload)
+				if err == nil {
+					totalWritten.Add(int64(n))
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	if err := rw.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	var totalInFiles int64
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		t.Fatalf("ReadDir: %v", err)
+	}
+	for _, e := range entries {
+		data, err := os.ReadFile(filepath.Join(dir, e.Name()))
+		if err != nil {
+			t.Fatalf("ReadFile %q: %v", e.Name(), err)
+		}
+		totalInFiles += int64(len(data))
+	}
+
+	if totalInFiles != totalWritten.Load() {
+		t.Fatalf("data integrity: %d bytes written, but %d bytes found in files",
+			totalWritten.Load(), totalInFiles)
+	}
+}
+
+// TestRotateWriter_ConcurrentWrites_OldFilesClosedBeforeRotation verifies that
+// every time a rotation happens, the previous file's ClosedAt is set — meaning
+// the file was properly closed before the next one was opened.
+func TestRotateWriter_ConcurrentWrites_OldFilesClosedBeforeRotation(t *testing.T) {
+	dir := t.TempDir()
+
+	var mu sync.Mutex
+	var unclosedCount int
+
+	r, err := rule.NewFileRotateRule(
+		func(count int, _ time.Time, _ metered_writer.WriterState) string {
+			return filepath.Join(dir, fmt.Sprintf("log-%d.log", count))
+		},
+		rule.WithMaxSize(32),
+		rule.WithRotateListener(func(_ int, _ time.Time, prev metered_writer.WriterState) {
+			if prev.ClosedAt == nil {
+				mu.Lock()
+				unclosedCount++
+				mu.Unlock()
+			}
+		}),
+	)
+	if err != nil {
+		t.Fatalf("NewFileRotateRule: %v", err)
+	}
+	rw, err := rotate_writer.NewRotateWriter(r, nil)
+	if err != nil {
+		t.Fatalf("NewRotateWriter: %v", err)
+	}
+
+	var wg sync.WaitGroup
+	for i := 0; i < 10; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for j := 0; j < 100; j++ {
+				rw.Write([]byte("rotation test payload\n"))
+			}
+		}()
+	}
+	wg.Wait()
+	rw.Close()
+
+	mu.Lock()
+	defer mu.Unlock()
+	if unclosedCount > 0 {
+		t.Fatalf("%d rotation(s) occurred where the previous file was not closed before rotation", unclosedCount)
+	}
+}
+
+// TestRotateWriter_BrokenState_AfterRotationFailure verifies that after a failed
+// rotation (rule.NewWriter errors), subsequent Write calls return an error rather
+// than silently writing to the already-closed underlying file.
+func TestRotateWriter_BrokenState_AfterRotationFailure(t *testing.T) {
+	dir := t.TempDir()
+
+	// This rule fails on the second NewWriter call. The first Write that triggers
+	// the split-write rotation will get an error. After that, the RotateWriter
+	// holds a closed file — writes must keep returning errors.
+	rw, err := rotate_writer.NewRotateWriter(&failOnSecondRotateRule{dir: dir}, nil)
+	if err != nil {
+		t.Fatalf("NewRotateWriter: %v", err)
+	}
+
+	// Fill to 4 bytes (maxSize=5, so one more byte triggers split-write rotation)
+	if _, err := rw.Write([]byte("abcd")); err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+
+	// This triggers split-write: writes 1 byte, rotation fails.
+	_, firstErr := rw.Write([]byte("efgh"))
+	if firstErr == nil {
+		t.Fatal("expected rotation failure error")
+	}
+
+	// The writer is now in a broken state (MeteredWriterCloser is closed).
+	// Every subsequent write must return an error — not silently succeed.
+	_, secondErr := rw.Write([]byte("more data"))
+	if secondErr == nil {
+		t.Fatal("write after broken state should return an error, got nil")
+	}
+}
+
+// TestRotateWriter_Close_FlushesDataBeforeClosing verifies that all data written
+// before Close() is readable from disk after Close() returns.
+func TestRotateWriter_Close_FlushesDataBeforeClosing(t *testing.T) {
+	dir := t.TempDir()
+	rw := newWriter(t, newFileRule(t, dir))
+
+	data := []byte("important data that must be flushed\n")
+	if _, err := rw.Write(data); err != nil {
+		t.Fatalf("Write: %v", err)
+	}
+	if err := rw.Close(); err != nil {
+		t.Fatalf("Close: %v", err)
+	}
+
+	got := readFile(t, filepath.Join(dir, "log-1.log"))
+	if string(got) != string(data) {
+		t.Fatalf("after Close, file content = %q; want %q", got, data)
+	}
 }
 
 // ---- Bug 1: infinite recursion / excessive rotation with stateless lambda ----
