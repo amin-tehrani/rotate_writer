@@ -144,18 +144,19 @@ func TestNewMeteredWriter_Write_PropagatesError(t *testing.T) {
 	}
 }
 
-// ---- NewMeteredWriter(nil) ----
+// ---- NewMeteredWriter(nil) — Bug 2 ----
 
-// BUG: NewMeteredWriter(nil) uses os.Open(os.DevNull) which opens /dev/null
-// read-only (O_RDONLY). Writes to it fail with "bad file descriptor".
-// It should use os.OpenFile(os.DevNull, os.O_WRONLY, 0) instead.
-func TestNewMeteredWriter_Nil_WriteFailsDueToBug(t *testing.T) {
+// BUG: NewMeteredWriter(nil) calls os.Open(os.DevNull) which opens /dev/null
+// with O_RDONLY. Writes fail with "bad file descriptor".
+// Fix: use os.OpenFile(os.DevNull, os.O_WRONLY, 0).
+func TestBug2_NewMeteredWriterNil_WriteShouldSucceed(t *testing.T) {
 	mw := metered_writer.NewMeteredWriter(nil)
-	_, err := mw.Write([]byte("discarded"))
-	if err == nil {
-		t.Log("BUG appears to be fixed: write to NewMeteredWriter(nil) now succeeds")
-	} else {
-		t.Logf("Known bug confirmed: write to NewMeteredWriter(nil) fails: %v", err)
+	n, err := mw.Write([]byte("discard me"))
+	if err != nil {
+		t.Fatalf("BUG: NewMeteredWriter(nil) opened /dev/null read-only; write failed: %v", err)
+	}
+	if n != 10 {
+		t.Fatalf("expected 10 bytes written, got %d", n)
 	}
 }
 
