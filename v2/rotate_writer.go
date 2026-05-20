@@ -89,7 +89,10 @@ func (rw *RotateWriter) Write(p []byte) (n int, err error) {
 		if err = rw.Rotate(); err != nil {
 			return 0, err
 		}
-		return rw.Write(p) // Recursive
+		rw.mu.Lock()
+		n, err = rw.MeteredWriterCloser.Write(p)
+		rw.mu.Unlock()
+		return
 	}
 
 	n, err = rw.MeteredWriterCloser.Write(p)

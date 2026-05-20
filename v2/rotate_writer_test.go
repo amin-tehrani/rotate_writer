@@ -311,16 +311,21 @@ func TestBug_StatelessLambda_ShouldNotCauseExcessiveRotations(t *testing.T) {
 	rw := newWriter(t, r)
 	defer rw.Close()
 
+	// NewRotateWriter calls Rotate() once during construction to open the first file.
+	// Capture that baseline so we only measure rotations triggered by Write.
+	rotationsAtStart := rotations
+
 	// Write a single payload. Correct behaviour: rotate once, write to the new file.
 	// Buggy behaviour: rotate up to 50 times before the cap kicks in.
 	rw.Write([]byte("hello"))
 
-	if rotations > 1 {
-		t.Fatalf("BUG: a single Write triggered %d rotations (expected 1); "+
-			"stateless lambda causes recursive re-check after each rotation", rotations)
+	extraRotations := rotations - rotationsAtStart
+	if extraRotations > 1 {
+		t.Fatalf("BUG: a single Write triggered %d extra rotations (expected 1); "+
+			"stateless lambda causes recursive re-check after each rotation", extraRotations)
 	}
 
-	// Data should land in the file opened after the first (and only) rotation.
+	// Data should land in the file opened after the one rotation triggered by Write.
 	expectedFile := filepath.Join(dir, "log-2.log")
 	if _, err := os.Stat(expectedFile); os.IsNotExist(err) {
 		t.Fatalf("expected data file %q does not exist", expectedFile)
