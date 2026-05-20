@@ -320,3 +320,44 @@ func TestNewTemplateFileRotateRule_EmptyTemplateName_ReturnsError(t *testing.T) 
 		t.Fatal("expected error when template produces empty filename")
 	}
 }
+
+func TestNewTemplateFileRotateRule_WithOptions(t *testing.T) {
+	dir := t.TempDir()
+	r, err := rule.NewTemplateFileRotateRule(
+		filepath.Join(dir, `app-{{printf "%03d" .Count}}.log`),
+		rule.WithMaxSize(1024),
+		rule.WithMaxDuration(time.Hour),
+	)
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+	if r.MaxSize() != 1024 {
+		t.Fatalf("expected MaxSize 1024, got %d", r.MaxSize())
+	}
+}
+
+func TestNewTemplateFileRotateRule_TemplateExecutionError(t *testing.T) {
+	// Template parses OK but fails at execution: .Count is int and has no fields.
+	// text/template errors during Execute → nameFn returns "" → NewWriter returns error.
+	r, err := rule.NewTemplateFileRotateRule(`{{.Count.NonExistentField}}`)
+	if err != nil {
+		t.Fatalf("unexpected parse error: %v", err)
+	}
+	_, err = r.NewWriter(1, time.Now(), metered_writer.WriterState{})
+	if err == nil {
+		t.Fatal("expected error when template execution fails and produces empty filename")
+	}
+}
+
+func TestFileGenerator_NewWriter_FileOpenError(t *testing.T) {
+	r, err := rule.NewFileRotateRule(func(_ int, _ time.Time, _ metered_writer.WriterState) string {
+		return "/nonexistent-dir-xyz/file.log"
+	})
+	if err != nil {
+		t.Fatalf("unexpected rule error: %v", err)
+	}
+	_, err = r.NewWriter(1, time.Now(), metered_writer.WriterState{})
+	if err == nil {
+		t.Fatal("expected error when target directory does not exist")
+	}
+}

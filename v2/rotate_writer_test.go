@@ -336,6 +336,74 @@ func TestBug_StatelessLambda_ShouldNotCauseExcessiveRotations(t *testing.T) {
 	}
 }
 
+// ---- Split-write error paths ----
+
+// errWriter is a WriteCloser whose Write always fails.
+type errWriter struct{}
+
+func (*errWriter) Write(_ []byte) (int, error) { return 0, fmt.Errorf("write error") }
+func (*errWriter) Close() error                { return nil }
+
+// alwaysFailWriteRule returns a writer that always fails on Write.
+// Implementing MaxSize makes it eligible for the split-write path.
+type alwaysFailWriteRule struct{ maxSize int }
+
+func (r *alwaysFailWriteRule) Check(_ metered_writer.WriterState) bool { return false }
+func (r *alwaysFailWriteRule) MaxSize() int                            { return r.maxSize }
+func (r *alwaysFailWriteRule) NewWriter(_ int, _ time.Time, _ metered_writer.WriterState) (metered_writer.MeteredWriterCloser, error) {
+	return metered_writer.NewMeteredWriter(&errWriter{}), nil
+}
+
+func TestRotateWriter_Write_SplitWrite_WriteError(t *testing.T) {
+	// maxSize=3, write 4 bytes → split triggered; Write(p1) fails immediately.
+	rw, err := rotate_writer.NewRotateWriter(&alwaysFailWriteRule{maxSize: 3}, nil)
+	if err != nil {
+		t.Fatalf("NewRotateWriter: %v", err)
+	}
+	_, err = rw.Write([]byte("abcd"))
+	if err == nil {
+		t.Fatal("expected error when underlying Write fails during split-write")
+	}
+}
+
+// failOnSecondRotateRule succeeds on the first NewWriter call (used by constructor)
+// and fails on subsequent calls (triggered by split-write rotation).
+type failOnSecondRotateRule struct {
+	dir   string
+	calls int
+}
+
+func (r *failOnSecondRotateRule) Check(_ metered_writer.WriterState) bool { return false }
+func (r *failOnSecondRotateRule) MaxSize() int                            { return 5 }
+func (r *failOnSecondRotateRule) NewWriter(count int, _ time.Time, _ metered_writer.WriterState) (metered_writer.MeteredWriterCloser, error) {
+	r.calls++
+	if r.calls > 1 {
+		return nil, fmt.Errorf("intentional rotation failure")
+	}
+	f, err := os.CreateTemp(r.dir, fmt.Sprintf("log-%d-*.log", count))
+	if err != nil {
+		return nil, err
+	}
+	return metered_writer.NewMeteredFileWriter(f), nil
+}
+
+func TestRotateWriter_Write_SplitWrite_RotateError(t *testing.T) {
+	dir := t.TempDir()
+	rw, err := rotate_writer.NewRotateWriter(&failOnSecondRotateRule{dir: dir}, nil)
+	if err != nil {
+		t.Fatalf("NewRotateWriter: %v", err)
+	}
+	// Write 4 bytes to get currSize=4, then write 4 more.
+	// Second write: int(4)+4 > 5 → split; p1="e" fills to 5, Rotate fails.
+	if _, err := rw.Write([]byte("abcd")); err != nil {
+		t.Fatalf("first write: %v", err)
+	}
+	_, err = rw.Write([]byte("efgh"))
+	if err == nil {
+		t.Fatal("expected error when Rotate fails during split-write")
+	}
+}
+
 // ---- RotateError ----
 
 func TestRotateError_Error(t *testing.T) {
