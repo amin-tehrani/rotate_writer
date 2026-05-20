@@ -52,9 +52,9 @@ func newFileGeneratorTemplate(tmplStr string) (fileGenerator, error) {
 	nameFn := func(count int, createTime time.Time, prevState metered_writer.WriterState) string {
 		var fileNameBuf bytes.Buffer
 		if err := tmpl.Execute(&fileNameBuf, map[string]any{
-			"count":      count,
-			"createTime": createTime,
-			"prevState":  prevState,
+			"Count":      count,
+			"CreateTime": createTime,
+			"PrevState":  prevState,
 		}); err != nil {
 			return ""
 		}
