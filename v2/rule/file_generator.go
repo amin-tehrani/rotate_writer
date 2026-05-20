@@ -3,8 +3,8 @@ package rule
 import (
 	"bytes"
 	"errors"
-	"html/template"
 	"os"
+	"text/template"
 	"time"
 
 	"github.com/amin-tehrani/rotate_writer/v2/metered_writer"

@@ -63,7 +63,7 @@ func (m *baseMeteredWriter) State() WriterState {
 
 func NewMeteredWriter(w io.WriteCloser) *baseMeteredWriter {
 	if w == nil {
-		devNull, _ := os.Open(os.DevNull)
+		devNull, _ := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 		w = devNull
 	}
 	return &baseMeteredWriter{
